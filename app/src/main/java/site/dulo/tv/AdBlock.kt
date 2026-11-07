@@ -1,29 +1,19 @@
 package site.dulo.tv
 
-/**
- * Network-level blocklist. Any request whose host contains one of these
- * fragments is answered with an empty body, so the ad script never runs
- * and therefore never gets the chance to call window.open().
- */
 object AdBlock {
 
     private val HOST_FRAGMENTS = listOf(
-        // Google ad stack
         "doubleclick.net", "googlesyndication.com", "googleadservices.com",
         "adservice.google.", "googletagservices.com", "googletagmanager.com",
-        "2mdn.net", "google-analytics.com", "analytics.google.com",
-        // Pop-under / pop-up networks
+        "2mdn.net", "google-analytics.com",
         "popads.net", "popcash.net", "propellerads", "propeller-tracking",
         "onclickads", "onclckds", "adsterra", "highperformanceformat.com",
         "hilltopads", "popmyads", "clickadu", "adcash", "exdynsrv.com",
-        "displaycontentnetwork", "revenuehits", "yllix", "adf.ly",
-        // Adult-heavy networks commonly used by streaming sites
+        "revenuehits", "yllix", "bidsxchange", "adserv", "trafficstars",
         "exoclick", "juicyads", "trafficjunky", "trafficfactory",
-        "adnium", "tsyndicate", "creative.sascdn",
-        // Native / content recommendation
+        "adnium", "tsyndicate", "sascdn",
         "mgid.com", "taboola.com", "outbrain.com", "revcontent.com",
         "zedo.com", "adskeeper", "media.net",
-        // Display exchanges
         "adnxs.com", "rubiconproject.com", "pubmatic.com", "criteo.com",
         "criteo.net", "casalemedia.com", "33across.com", "sharethrough.com",
         "smartadserver.com", "improvedigital.com", "adform.net",
@@ -31,40 +21,48 @@ object AdBlock {
         "triplelift.com", "districtm.io", "spotxchange.com", "telaria.com",
         "advertising.com", "amazon-adsystem.com", "bidswitch.net",
         "contextweb.com", "lijit.com", "sonobi.com", "trustx.org",
-        // Misc trackers that ride along with the ads
         "scorecardresearch.com", "quantserve.com", "hotjar.com",
-        "facebook.net/en_US/fbevents", "connect.facebook.net",
-        // Redirect interstitials
-        "cloudflareinsights.com", "onesignal.com"
+        "connect.facebook.net", "cloudflareinsights.com", "onesignal.com",
+        "push-notifications", "interstitial", "adroll", "adcolony"
     )
 
-    /** Hosts we must never block, even if a fragment matches. */
-    private val ALLOW = listOf(
+    /** Site hosts plus every player/embed/CDN host the site legitimately navigates to. */
+    private val ALLOW_NAV = listOf(
         "dulo.site", "dulo.tv", "dulo.sx", "dulo.mov", "dulo.vg",
         "dulo.watch", "dulo.im", "dulotv.site",
         "youtube.com", "ytimg.com", "googlevideo.com", "gstatic.com",
-        "jsdelivr.net", "cdnjs.cloudflare.com", "unpkg.com"
+        "jsdelivr.net", "cdnjs.cloudflare.com", "unpkg.com",
+        "tmdb.org", "themoviedb.org", "imdb.com",
+        "vidsrc.xyz", "vidsrc.to", "vidsrc.me", "vidsrc.net", "vidsrc.in",
+        "2embed.cc", "2embed.to", "multiembed.mov", "videasy.net",
+        "vidlink.pro", "vidfast.pro", "111movies.com", "smashystream.com",
+        "streamtape.com", "filemoon.sx", "dood.", "voe.sx", "mixdrop.co",
+        "upstream.to", "mp4upload.com", "vidcloud", "rabbitstream.net",
+        "megacloud", "hydrax.net", "streamwish.to", "abyss.to",
+        "superembed", "vidbinge.com", "embed.su", "player4u.xyz",
+        "cloudflare.com", "b-cdn.net", "fastly.net", "akamaized.net"
     )
 
-    fun isAd(url: String?): Boolean {
-        if (url.isNullOrBlank()) return false
-        val host = try {
-            java.net.URI(url).host?.lowercase()
-        } catch (_: Exception) {
-            return false
-        } ?: return false
+    private fun hostOf(url: String?): String? = try {
+        java.net.URI(url ?: return null).host?.lowercase()
+    } catch (_: Exception) { null }
 
-        if (ALLOW.any { host == it || host.endsWith(".$it") }) return false
-        if (host.startsWith("fonts.") || host.startsWith("cdn.")) {
-            // cdn./fonts. hosts are almost always assets the site needs
-            if (!HOST_FRAGMENTS.any { host.contains(it) }) return false
-        }
-        return HOST_FRAGMENTS.any { host.contains(it) }
+    private fun matches(host: String, list: List<String>) =
+        list.any { host == it || host.endsWith(".$it") || host.contains(it) }
+
+    fun isAd(url: String?): Boolean {
+        val host = hostOf(url) ?: return false
+        if (matches(host, ALLOW_NAV)) return false
+        return matches(host, HOST_FRAGMENTS)
     }
 
-    /** Bare-domain navigation target (for redirect blocking). */
-    fun isAdDestination(url: String?): Boolean {
-        if (url.isNullOrBlank()) return false
-        return isAd(url)
+    fun isAdDestination(url: String?) = isAd(url)
+
+    /** True when a navigation to this host should never be treated as an ad redirect. */
+    fun isAllowedNav(url: String?): Boolean {
+        val u = url ?: return false
+        if (u.contains(".m3u8") || u.contains(".mp4")) return true
+        val host = hostOf(u) ?: return true
+        return matches(host, ALLOW_NAV) || matches(host, HOST_FRAGMENTS).not()
     }
 }
